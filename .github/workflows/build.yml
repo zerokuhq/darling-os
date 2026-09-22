@@ -54,6 +54,7 @@ jobs:
             "DARLING_TAG=${{ inputs.darling_tag || 'v0.1.20260608' }}" \
             "IMG_SIZE=${{ inputs.img_size || '8G' }}" \
             ./scripts/build-image.sh
+          sudo chmod -R a+rX build/dist
 
       - name: Headless QEMU boot smoke test
         run: |
