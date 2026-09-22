@@ -168,7 +168,7 @@ Running with QEMU:
     -drive file=${IMAGE_NAME}.qcow2,format=qcow2,if=virtio \\
     -nographic -serial mon:stdio
 
-  # macOS (UTM or QEMU TCG)
+  # Without KVM (UTM or QEMU TCG)
   qemu-system-x86_64 -m 4G -smp 4 \\
     -drive file=${IMAGE_NAME}.qcow2,format=qcow2,if=virtio \\
     -nographic -serial mon:stdio

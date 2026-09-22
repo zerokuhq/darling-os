@@ -1,13 +1,13 @@
 # DarlingOS
 
-**DarlingOS** is a specialized, lightweight operating system that boots directly into [Darling](https://www.darlinghq.org) (Darwin userland with `zsh`) to serve as a dedicated, **TUI-only macOS replacement environment**.
+**DarlingOS** is a specialized, lightweight operating system that boots directly into [Darling](https://www.darlinghq.org) (Darwin userland with `zsh`) to serve as a dedicated, **TUI-only Darwin operating system environment**.
 
 Built on a minimal Linux kernel and systemd foundation, DarlingOS is strictly hardened as an appliance: **users cannot escape, drop, or fallback to Linux under any circumstances**.
 
 ```
 +-------------------------------------------------------------+
 |                         DarlingOS                           |
-|       (macOS-Compatible TUI Console - zsh login shell)      |
+|         (Darwin TUI Console - zsh login shell)              |
 +-------------------------------------------------------------+
 |        Darwin System Libraries, Frameworks & CLI Tools      |
 +-------------------------------------------------------------+
@@ -21,7 +21,7 @@ Built on a minimal Linux kernel and systemd foundation, DarlingOS is strictly ha
 
 ## Key Features
 
-- **Boots Straight into macOS TUI**: Automatically logs in to the `darwin` console on `tty1` and `ttyS0` with `zsh` as the default interactive login shell (matching modern macOS).
+- **Boots Straight into Darwin TUI**: Automatically logs in to the `darwin` console on `tty1` and `ttyS0` with `zsh` as the default interactive login shell.
 - **Zero Linux Escape Guarantee**:
   - The Linux `root` account is permanently disabled (`passwd -l root` with `/usr/sbin/nologin`).
   - User `darwin` is unprivileged with **zero sudo permissions**.
@@ -56,7 +56,7 @@ qemu-system-x86_64 -enable-kvm -cpu host -m 4G -smp 4 \
   -nographic -serial mon:stdio
 ```
 
-#### On macOS (UTM or QEMU TCG Emulation)
+#### Without KVM (UTM or QEMU TCG Emulation)
 ```bash
 qemu-system-x86_64 -m 4G -smp 4 \
   -drive file=darlingos-amd64.qcow2,format=qcow2,if=virtio \
@@ -65,7 +65,7 @@ qemu-system-x86_64 -m 4G -smp 4 \
   -nographic -serial mon:stdio
 ```
 
-> **Tip:** You can also import `darlingos-amd64.qcow2` directly into **UTM** on macOS or **Proxmox VE** on Linux.
+> **Tip:** You can also import `darlingos-amd64.qcow2` directly into **UTM** or **Proxmox VE**.
 
 ### 3. Remote Access via SSH
 If port forwarding is configured (e.g. `2222 -> 22`):
@@ -76,20 +76,20 @@ Connecting via SSH drops directly into DarlingOS `zsh`.
 
 ---
 
-## macOS CLI Commands Inside DarlingOS
+## Darwin CLI Commands Inside DarlingOS
 
-Inside DarlingOS, you have access to standard macOS commands and utilities:
+Inside DarlingOS, you have access to standard Darwin commands and utilities:
 
 ```zsh
-sw_vers               # Displays macOS version and build number
+sw_vers               # Displays system version and build number
 uname -a              # Reports Darwin kernel identity
-defaults read         # macOS defaults system
+defaults read         # Defaults property system
 plutil -p file.plist  # Property list tool
 otool -L /bin/zsh     # Inspect Mach-O dependencies
 codesign --display    # Verify code signatures
-python2               # macOS python runtime
-ruby                  # macOS ruby runtime
-perl                  # macOS perl runtime
+python2               # Python runtime
+ruby                  # Ruby runtime
+perl                  # Perl runtime
 ```
 
 ---
@@ -108,6 +108,7 @@ sudo apt-get install -y \
   zstd \
   curl \
   unzip \
+  kpartx \
   ca-certificates \
   grub-pc-bin \
   grub-efi-amd64-bin
