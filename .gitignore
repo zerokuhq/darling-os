@@ -1,0 +1,15 @@
+# Build artifacts & temp files
+build/
+.tmp-inspect/
+*.raw
+*.img
+*.iso
+*.qcow2
+*.qcow2.zst
+*.sha256
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+*.swp
+*~

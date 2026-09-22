@@ -1,0 +1,96 @@
+name: Build DarlingOS Image
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      darling_tag:
+        description: 'Darling release tag to package'
+        required: false
+        default: 'v0.1.20260608'
+        type: string
+      img_size:
+        description: 'Raw disk image size (e.g. 8G, 10G)'
+        required: false
+        default: '8G'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release DarlingOS Image
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools and QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            debootstrap \
+            qemu-utils \
+            qemu-system-x86 \
+            parted \
+            dosfstools \
+            e2fsprogs \
+            zstd \
+            curl \
+            unzip \
+            ca-certificates \
+            grub-pc-bin \
+            grub-efi-amd64-bin
+
+      - name: Build DarlingOS disk image
+        run: |
+          sudo env "PATH=$PATH" \
+            "DARLING_TAG=${{ inputs.darling_tag || 'v0.1.20260608' }}" \
+            "IMG_SIZE=${{ inputs.img_size || '8G' }}" \
+            ./scripts/build-image.sh
+
+      - name: Headless QEMU boot smoke test
+        run: |
+          echo "Starting QEMU headless boot smoke test..."
+          timeout --preserve-status 40s qemu-system-x86_64 \
+            -m 2G -smp 2 \
+            -drive file=build/dist/darlingos-amd64.qcow2,format=qcow2,if=virtio \
+            -nographic -serial file:boot.log || true
+          
+          echo "=== Console Boot Output ==="
+          if [ -f boot.log ]; then
+            tr -cd '\11\12\15\40-\176' < boot.log | head -n 60
+          else
+            echo "No boot log generated"
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: darlingos-amd64
+          path: |
+            build/dist/darlingos-amd64.qcow2.zst
+            build/dist/darlingos-amd64.qcow2.zst.sha256
+            build/dist/darlingos-amd64.qcow2.sha256
+            build/dist/IMAGE-INFO.txt
+          retention-days: 14
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "DarlingOS ${{ github.ref_name }}"
+          body_path: build/dist/IMAGE-INFO.txt
+          draft: false
+          prerelease: false
+          files: |
+            build/dist/darlingos-amd64.qcow2.zst
+            build/dist/darlingos-amd64.qcow2.zst.sha256
+            build/dist/IMAGE-INFO.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

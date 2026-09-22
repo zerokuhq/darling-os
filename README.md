@@ -1,0 +1,151 @@
+# DarlingOS
+
+**DarlingOS** is a specialized, lightweight operating system that boots directly into [Darling](https://www.darlinghq.org) (Darwin userland with `zsh`) to serve as a dedicated, **TUI-only macOS replacement environment**.
+
+Built on a minimal Linux kernel and systemd foundation, DarlingOS is strictly hardened as an appliance: **users cannot escape, drop, or fallback to Linux under any circumstances**.
+
+```
++-------------------------------------------------------------+
+|                         DarlingOS                           |
+|       (macOS-Compatible TUI Console - zsh login shell)      |
++-------------------------------------------------------------+
+|        Darwin System Libraries, Frameworks & CLI Tools      |
++-------------------------------------------------------------+
+|        Darling Container & Mach-O Execution Engine          |
++-------------------------------------------------------------+
+|         Linux Kernel 6.8 & Minimal Appliance Base           |
++-------------------------------------------------------------+
+```
+
+---
+
+## Key Features
+
+- **Boots Straight into macOS TUI**: Automatically logs in to the `darwin` console on `tty1` and `ttyS0` with `zsh` as the default interactive login shell (matching modern macOS).
+- **Zero Linux Escape Guarantee**:
+  - The Linux `root` account is permanently disabled (`passwd -l root` with `/usr/sbin/nologin`).
+  - User `darwin` is unprivileged with **zero sudo permissions**.
+  - Host Linux shells (`/bin/bash`, `/bin/dash`, `/bin/sh`) are restricted to `0700 root:root` so executing host binaries via `/Volumes/SystemRoot` is denied by the kernel.
+  - Secondary virtual terminals (`tty2` through `tty6`) and dynamic VTs are permanently masked. Keyboard shortcuts (`Alt+F1`–`Alt+F12`) for console switching are neutralized.
+  - The shell wrapper (`/usr/local/bin/darling-shell`) traps all interrupt signals (`INT`, `QUIT`, `TSTP`, `HUP`) and runs in an infinite loop. Any session exit immediately restarts DarlingOS without yielding to a Linux shell.
+  - Systemd emergency and rescue targets are masked so errors cannot drop into an emergency root shell.
+- **Dual Bootloader Support**: GPT partitioned disk image with both legacy BIOS (`i386-pc` via `bios_grub`) and UEFI (`x86_64-efi` with removable fallback binary `BOOTX64.EFI`).
+- **Remote SSH Access**: SSH is enabled and restricted strictly to user `darwin` (`PermitRootLogin no`), dropping directly into the DarlingOS `zsh` shell.
+- **Automated CI/CD**: Prebuilt disk images are compiled, verified with headless QEMU boot tests, and published via GitHub Actions Artifacts and GitHub Releases.
+
+---
+
+## Quick Start: Running Prebuilt Images
+
+### 1. Download
+Download the latest compressed disk image (`darlingos-amd64.qcow2.zst`) from [GitHub Releases](https://github.com/zerokuhq/darling-os/releases) or GitHub Actions Artifacts.
+
+Decompress the image:
+```bash
+zstd -d darlingos-amd64.qcow2.zst
+```
+
+### 2. Run with QEMU
+
+#### On Linux (KVM Accelerated)
+```bash
+qemu-system-x86_64 -enable-kvm -cpu host -m 4G -smp 4 \
+  -drive file=darlingos-amd64.qcow2,format=qcow2,if=virtio \
+  -device virtio-net-pci,netdev=net0 \
+  -netdev user,id=net0,hostfwd=tcp::2222-:22 \
+  -nographic -serial mon:stdio
+```
+
+#### On macOS (UTM or QEMU TCG Emulation)
+```bash
+qemu-system-x86_64 -m 4G -smp 4 \
+  -drive file=darlingos-amd64.qcow2,format=qcow2,if=virtio \
+  -device virtio-net-pci,netdev=net0 \
+  -netdev user,id=net0,hostfwd=tcp::2222-:22 \
+  -nographic -serial mon:stdio
+```
+
+> **Tip:** You can also import `darlingos-amd64.qcow2` directly into **UTM** on macOS or **Proxmox VE** on Linux.
+
+### 3. Remote Access via SSH
+If port forwarding is configured (e.g. `2222 -> 22`):
+```bash
+ssh -p 2222 darwin@localhost
+```
+Connecting via SSH drops directly into DarlingOS `zsh`.
+
+---
+
+## macOS CLI Commands Inside DarlingOS
+
+Inside DarlingOS, you have access to standard macOS commands and utilities:
+
+```zsh
+sw_vers               # Displays macOS version and build number
+uname -a              # Reports Darwin kernel identity
+defaults read         # macOS defaults system
+plutil -p file.plist  # Property list tool
+otool -L /bin/zsh     # Inspect Mach-O dependencies
+codesign --display    # Verify code signatures
+python2               # macOS python runtime
+ruby                  # macOS ruby runtime
+perl                  # macOS perl runtime
+```
+
+---
+
+## Building DarlingOS from Source
+
+### Prerequisites (Ubuntu 24.04 LTS host)
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  debootstrap \
+  qemu-utils \
+  parted \
+  dosfstools \
+  e2fsprogs \
+  zstd \
+  curl \
+  unzip \
+  ca-certificates \
+  grub-pc-bin \
+  grub-efi-amd64-bin
+```
+
+### Assemble the Disk Image
+```bash
+sudo ./scripts/build-image.sh
+```
+
+The output will be generated in `build/dist/`:
+- `darlingos-amd64.qcow2.zst`: Compressed bootable disk image.
+- `darlingos-amd64.qcow2.zst.sha256`: SHA-256 checksum.
+- `IMAGE-INFO.txt`: Image metadata and run instructions.
+
+---
+
+## Repository Structure
+
+```
+.
+├── .github/
+│   └── workflows/
+│       └── build.yml          # GitHub Actions build & release workflow
+├── scripts/
+│   ├── build-rootfs.sh        # Builds locked root filesystem with Darling & zsh
+│   └── build-image.sh         # Partitions GPT disk, installs GRUB & converts to qcow2
+├── LICENSE                    # MIT License
+├── README.md                  # Project documentation
+└── .gitignore                 # Build artifacts ignore rules
+```
+
+---
+
+## License
+
+DarlingOS build scripts and configuration are licensed under the [MIT License](LICENSE).
+
+Upstream components:
+- [Darling](https://www.darlinghq.org): GPL v3 / LGPL / APSL
+- Ubuntu Linux: GPL and open source licenses
