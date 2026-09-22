@@ -76,10 +76,17 @@ parted -s "$IMG" set 2 esp on
 parted -s "$IMG" mkpart root ext4 "$((ESP_SIZE_MIB + 3))MiB" 100%
 
 log "Attaching loop device"
-LOOP="$(losetup -P --show "$IMG")"
+modprobe loop 2>/dev/null || true
+for i in $(seq 0 15); do
+  [ -e "/dev/loop$i" ] || mknod "/dev/loop$i" b 7 "$i" 2>/dev/null || true
+done
+LOOP="$(losetup -fP --show "$IMG")"
 log "Loop device: $LOOP"
-partprobe "$LOOP"
+partprobe "$LOOP" 2>/dev/null || true
 udevadm settle 2>/dev/null || sleep 2
+if [ ! -e "${LOOP}p2" ]; then
+  partx -u "$LOOP" 2>/dev/null || partx -a "$LOOP" 2>/dev/null || true
+fi
 
 log "Formatting partitions"
 mkfs.fat -F 32 -n DARLING_ESP "${LOOP}p2"

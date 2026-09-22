@@ -43,6 +43,7 @@ jobs:
             zstd \
             curl \
             unzip \
+            kpartx \
             ca-certificates \
             grub-pc-bin \
             grub-efi-amd64-bin
