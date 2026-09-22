@@ -161,6 +161,11 @@ chown -R 1000:1000 "$CHROOT_DIR/usr/libexec/darling/usr/local"
 test -x "$CHROOT_DIR/usr/libexec/darling/usr/local/Homebrew/bin/brew"
 test -x "$CHROOT_DIR/usr/libexec/darling/usr/local/bin/brew"
 
+# Compatibility symlink: support scripts expecting ARM64 /opt/homebrew prefix
+mkdir -p "$CHROOT_DIR/usr/libexec/darling/opt"
+ln -sf ../usr/local "$CHROOT_DIR/usr/libexec/darling/opt/homebrew"
+test -x "$CHROOT_DIR/usr/libexec/darling/opt/homebrew/bin/brew"
+
 # --- 6. configuration & single-userland zero-escape lockdown -----------------
 log "Configuring DarlingOS single userland and zero-escape lockdown"
 

@@ -108,6 +108,8 @@ brew install <pkg>    # Install command-line formulas
 
 Homebrew is pre-configured with rootless permissions (`/usr/local` owned by user `darwin`) and optimized for DarlingOS with automated telemetry and auto-update delays disabled (`HOMEBREW_NO_ANALYTICS=1`, `HOMEBREW_NO_AUTO_UPDATE=1`).
 
+> **Path Compatibility:** DarlingOS is an x86_64 system where `/usr/local/bin/brew` is the standard location, and `eval "$(/usr/local/bin/brew shellenv)"` is already loaded automatically in `.zprofile`. For compatibility with scripts or configurations targeting Apple Silicon paths, `/opt/homebrew` is symlinked to `/usr/local` so `/opt/homebrew/bin/brew` works identically.
+
 ---
 
 ## Building DarlingOS from Source
