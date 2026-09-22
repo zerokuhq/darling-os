@@ -27,7 +27,8 @@ Built on a minimal Linux kernel and systemd foundation, DarlingOS is strictly ha
   - User `darwin` is unprivileged with **zero sudo permissions**.
   - Host Linux shells (`/bin/bash`, `/bin/dash`, `/bin/sh`) are restricted to `0700 root:root` so executing host binaries via `/Volumes/SystemRoot` is denied by the kernel.
   - Secondary virtual terminals (`tty2` through `tty6`) and dynamic VTs are permanently masked. Keyboard shortcuts (`Alt+F1`–`Alt+F12`) for console switching are neutralized.
-  - The shell wrapper (`/usr/local/bin/darling-shell`) traps all interrupt signals (`INT`, `QUIT`, `TSTP`, `HUP`) and runs in an infinite loop. Any session exit immediately restarts DarlingOS without yielding to a Linux shell.
+  - The shell wrapper (`/usr/local/bin/system-shell`) traps all interrupt signals (`INT`, `QUIT`, `TSTP`, `HUP`) and runs in an infinite loop. Any session exit immediately restarts DarlingOS without yielding to a Linux shell.
+  - Unified Darwin userland: the prefix is housed cleanly in `~/.system` (no `/darling` folder names) and `/Volumes/SystemRoot` is automatically unmounted to prevent host filesystem leakage.
   - Systemd emergency and rescue targets are masked so errors cannot drop into an emergency root shell.
 - **Dual Bootloader Support**: GPT partitioned disk image with both legacy BIOS (`i386-pc` via `bios_grub`) and UEFI (`x86_64-efi` with removable fallback binary `BOOTX64.EFI`).
 - **Remote SSH Access**: SSH is enabled and restricted strictly to user `darwin` (`PermitRootLogin no`), dropping directly into the DarlingOS `zsh` shell.

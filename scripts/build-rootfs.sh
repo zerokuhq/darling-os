@@ -3,8 +3,8 @@
 # build-rootfs.sh - build the DarlingOS root filesystem.
 #
 # Creates an Ubuntu (noble) minimal base in TARGET_DIR, installs the kernel,
-# GRUB and the prebuilt Darling package set, and configures the system to boot
-# directly into DarlingOS (Darwin userland with zsh) with zero Linux fallback.
+# GRUB and prebuilt packages, and configures the system to boot directly into
+# the unified DarlingOS Darwin userland (zsh + Homebrew) with zero Linux fallback.
 #
 # Usage:   sudo ./scripts/build-rootfs.sh <target-dir>
 #
@@ -26,14 +26,11 @@ TARGET_DIR="${1:?usage: build-rootfs.sh <target-dir>}"
 SUITE="${SUITE:-noble}"
 MIRROR="${MIRROR:-http://archive.ubuntu.com/ubuntu}"
 
-# Darling release to install (prebuilt debs for noble/amd64).
+# Prebuilt binary package release.
 DARLING_TAG="${DARLING_TAG:-v0.1.20260608}"
 DARLING_DEBS_URL="${DARLING_DEBS_URL:-https://github.com/darlinghq/darling/releases/download/v0.1.20260608/debs_20260608.zip}"
 DARLING_DEBS_SHA256="${DARLING_DEBS_SHA256:-27469ef3932da2e91dd7fb34b70e3628a3e54b7af9fb5480051f44af35eca1fd}"
 
-# TUI package set. The GUI packages (darling-gui, darling-gui-stubs,
-# darling-pyobjc, darling-iokitd, darling-iosurface, darling-extra) are
-# intentionally omitted - this is a TUI-only system.
 DARLING_DEBS=(
   darling-core
   darling-system
@@ -52,7 +49,7 @@ DARLING_DEBS=(
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORK_DIR="${WORK_DIR:-$ROOT_DIR/build}"
-DEBS_DIR="$WORK_DIR/darling-debs"
+DEBS_DIR="$WORK_DIR/packages"
 
 log() { printf '\n\033[1;36m== %s\033[0m\n' "$*"; }
 
@@ -64,7 +61,7 @@ cleanup() {
   umount "$CHROOT_DIR/dev" 2>/dev/null
   umount "$CHROOT_DIR/proc" 2>/dev/null
   umount "$CHROOT_DIR/sys" 2>/dev/null
-  umount "$CHROOT_DIR/var/cache/darling-debs" 2>/dev/null
+  umount "$CHROOT_DIR/var/cache/packages" 2>/dev/null
 }
 trap cleanup EXIT
 
@@ -78,7 +75,7 @@ log "Preparing chroot"
 CHROOT_DIR="$TARGET_DIR"
 cp /etc/resolv.conf "$CHROOT_DIR/etc/resolv.conf"
 mkdir -p "$CHROOT_DIR/dev" "$CHROOT_DIR/proc" "$CHROOT_DIR/sys" \
-         "$CHROOT_DIR/var/cache/darling-debs"
+         "$CHROOT_DIR/var/cache/packages"
 mount --bind /dev     "$CHROOT_DIR/dev"
 mount --bind /dev/pts "$CHROOT_DIR/dev/pts"
 mount -t proc proc    "$CHROOT_DIR/proc"
@@ -94,7 +91,7 @@ EOF
 r() { chroot "$CHROOT_DIR" "$@"; }
 
 # --- 3. system packages -------------------------------------------------------
-log "Installing system packages (kernel, grub, networking, darling deps)"
+log "Installing system packages (kernel, bootloader, networking, runtime dependencies)"
 r /bin/sh -c '
   set -e
   export DEBIAN_FRONTEND=noninteractive
@@ -115,26 +112,26 @@ r /bin/sh -c '
   apt-get install -y --no-install-recommends libc6-i386
 '
 
-# --- 4. darling ----------------------------------------------------------------
-log "Downloading Darling $DARLING_TAG"
+# --- 4. system runtime & userland ---------------------------------------------
+log "Downloading system packages $DARLING_TAG"
 mkdir -p "$WORK_DIR" "$DEBS_DIR"
-if [ ! -f "$WORK_DIR/darling-debs.zip" ]; then
-  curl -fL --retry 3 -o "$WORK_DIR/darling-debs.zip" "$DARLING_DEBS_URL"
+if [ ! -f "$WORK_DIR/packages.zip" ]; then
+  curl -fL --retry 3 -o "$WORK_DIR/packages.zip" "$DARLING_DEBS_URL"
 fi
-echo "$DARLING_DEBS_SHA256  $WORK_DIR/darling-debs.zip" | sha256sum -c -
-unzip -q -o "$WORK_DIR/darling-debs.zip" -d "$DEBS_DIR"
+echo "$DARLING_DEBS_SHA256  $WORK_DIR/packages.zip" | sha256sum -c -
+unzip -q -o "$WORK_DIR/packages.zip" -d "$DEBS_DIR"
 DEBS_SUBDIR="$(find "$DEBS_DIR" -maxdepth 1 -mindepth 1 -type d | head -n 1)"
-[ -n "$DEBS_SUBDIR" ] || { echo "error: no debs_* directory inside zip" >&2; exit 1; }
-mount --bind "$DEBS_SUBDIR" "$CHROOT_DIR/var/cache/darling-debs"
+[ -n "$DEBS_SUBDIR" ] || { echo "error: no packages directory inside zip" >&2; exit 1; }
+mount --bind "$DEBS_SUBDIR" "$CHROOT_DIR/var/cache/packages"
 
-log "Installing Darling TUI package set"
+log "Installing Darwin userland package set"
 deb_args=""
 for p in "${DARLING_DEBS[@]}"; do
-  deb_args="$deb_args /var/cache/darling-debs/${p}_*.deb"
+  deb_args="$deb_args /var/cache/packages/${p}_*.deb"
 done
 r /bin/sh -c "set -e; export DEBIAN_FRONTEND=noninteractive; apt-get install -y$deb_args"
 
-log "Verifying Darling installation"
+log "Verifying system runtime installation"
 r /bin/sh -c '
   set -e
   test -x /usr/bin/darling
@@ -163,8 +160,8 @@ ln -sf /usr/local/Homebrew/bin/brew "$CHROOT_DIR/usr/libexec/darling/usr/local/b
 chown -R 1000:1000 "$CHROOT_DIR/usr/libexec/darling/usr/local"
 test -x "$CHROOT_DIR/usr/libexec/darling/usr/local/bin/brew"
 
-# --- 6. configuration & zero-escape lockdown ---------------------------------
-log "Configuring DarlingOS and applying zero-escape lockdown"
+# --- 6. configuration & single-userland zero-escape lockdown -----------------
+log "Configuring DarlingOS single userland and zero-escape lockdown"
 
 printf 'darlingos\n' > "$CHROOT_DIR/etc/hostname"
 
@@ -177,13 +174,12 @@ ff02::1		ip6-allnodes
 ff02::2		ip6-allrouters
 EOF
 
-# Kernel tunables required by Darling.
-cat > "$CHROOT_DIR/etc/sysctl.d/60-darling.conf" <<'EOF'
+# Kernel tunables required by Darwin userland emulation.
+cat > "$CHROOT_DIR/etc/sysctl.d/60-system.conf" <<'EOF'
 # Darwin userland maps code segments at low virtual addresses.
 vm.mmap_min_addr = 0
 
-# Darling prefixes are built from unprivileged user + mount namespaces,
-# which Ubuntu restricts for AppArmor-confined processes by default.
+# Prefix isolation relies on unprivileged user + mount namespaces.
 kernel.apparmor_restrict_unprivileged_userns = 0
 EOF
 
@@ -229,7 +225,7 @@ RemainAfterExit=yes
 WantedBy=sysinit.target
 EOF
 
-# tty1 autologin directly into DarlingOS.
+# tty1 autologin directly into DarlingOS session.
 mkdir -p "$CHROOT_DIR/etc/systemd/system/getty@tty1.service.d"
 cat > "$CHROOT_DIR/etc/systemd/system/getty@tty1.service.d/override.conf" <<'EOF'
 [Service]
@@ -239,7 +235,7 @@ Restart=always
 RestartSec=1
 EOF
 
-# ttyS0 serial autologin directly into DarlingOS (no root shell on serial).
+# ttyS0 serial autologin directly into DarlingOS session.
 mkdir -p "$CHROOT_DIR/etc/systemd/system/getty@ttyS0.service.d"
 cat > "$CHROOT_DIR/etc/systemd/system/getty@ttyS0.service.d/override.conf" <<'EOF'
 [Service]
@@ -253,13 +249,15 @@ cat > "$CHROOT_DIR/etc/issue" <<'EOF'
 DarlingOS (amd64)
 EOF
 
-# Login wrapper: trapped infinite loop running zsh in Darling.
+# Single-userland session wrapper: trapped infinite loop running zsh in DarlingOS.
+# DPREFIX is set to ~/.system to avoid any folder named .darling.
 # Never exits or drops to a Linux shell prompt under any condition.
-cat > "$CHROOT_DIR/usr/local/bin/darling-shell" <<'EOF'
+cat > "$CHROOT_DIR/usr/local/bin/system-shell" <<'EOF'
 #!/bin/sh
 trap '' INT QUIT TSTP HUP
 export SHELL=/bin/zsh
 export TERM="${TERM:-xterm-256color}"
+export DPREFIX="$HOME/.system"
 
 while true; do
   clear 2>/dev/null || true
@@ -273,17 +271,17 @@ while true; do
   sleep 1
 done
 EOF
-chmod 0755 "$CHROOT_DIR/usr/local/bin/darling-shell"
+chmod 0755 "$CHROOT_DIR/usr/local/bin/system-shell"
 
 # Users and permissions lockdown:
 # 1. Disable root account completely (locked password, nologin shell).
-# 2. Create user 'darwin' with locked password and darling-shell wrapper.
+# 2. Create user 'darwin' with locked password and system-shell wrapper.
 # 3. Strip sudo access (darwin is not in sudo or wheel).
 # 4. Restrict host shells (/bin/bash, /bin/dash, etc.) to 0700 root:root
 #    so user 'darwin' cannot execute host Linux binaries via /Volumes/SystemRoot.
 r /bin/sh -c '
   set -e
-  useradd -m -u 1000 -s /usr/local/bin/darling-shell darwin
+  useradd -m -u 1000 -s /usr/local/bin/system-shell darwin
   passwd -l root
   passwd -l darwin
   usermod -s /usr/sbin/nologin root
@@ -316,6 +314,9 @@ export PATH="/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 export HOMEBREW_NO_ANALYTICS=1
 export HOMEBREW_NO_AUTO_UPDATE=1
 eval "$(/usr/local/bin/brew shellenv 2>/dev/null || true)"
+
+# Single unified userland: unmount host root leak
+umount /Volumes/SystemRoot 2>/dev/null || true
 EOF
 
 cat > "$CHROOT_DIR/home/darwin/.zshrc" <<'EOF'
@@ -327,9 +328,9 @@ export HOMEBREW_NO_AUTO_UPDATE=1
 EOF
 chown -R 1000:1000 "$CHROOT_DIR/home/darwin"
 
-# SSH lockdown: only allow user darwin (which launches darling-shell); block root.
+# SSH lockdown: only allow user darwin (which launches system-shell); block root.
 mkdir -p "$CHROOT_DIR/etc/ssh/sshd_config.d"
-cat > "$CHROOT_DIR/etc/ssh/sshd_config.d/darling.conf" <<'EOF'
+cat > "$CHROOT_DIR/etc/ssh/sshd_config.d/system.conf" <<'EOF'
 PermitRootLogin no
 AllowUsers darwin
 X11Forwarding no
