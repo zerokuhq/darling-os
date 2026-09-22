@@ -154,10 +154,11 @@ mkdir -p "$CHROOT_DIR/usr/libexec/darling/usr/local/Homebrew" \
 git clone --depth=1 https://github.com/Homebrew/brew.git \
   "$CHROOT_DIR/usr/libexec/darling/usr/local/Homebrew"
 
-ln -sf /usr/local/Homebrew/bin/brew "$CHROOT_DIR/usr/libexec/darling/usr/local/bin/brew"
+ln -sf ../Homebrew/bin/brew "$CHROOT_DIR/usr/libexec/darling/usr/local/bin/brew"
 
 # Ensure user darwin (UID 1000) owns /usr/local for rootless package management
 chown -R 1000:1000 "$CHROOT_DIR/usr/libexec/darling/usr/local"
+test -x "$CHROOT_DIR/usr/libexec/darling/usr/local/Homebrew/bin/brew"
 test -x "$CHROOT_DIR/usr/libexec/darling/usr/local/bin/brew"
 
 # --- 6. configuration & single-userland zero-escape lockdown -----------------
