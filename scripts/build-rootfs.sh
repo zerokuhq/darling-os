@@ -105,7 +105,7 @@ r /bin/sh -c '
     systemd-resolved systemd-timesyncd \
     initramfs-tools \
     linux-image-generic \
-    grub-pc grub-efi-amd64 \
+    grub-efi-amd64 grub-pc-bin \
     ca-certificates \
     curl nano kbd \
     openssh-server \
