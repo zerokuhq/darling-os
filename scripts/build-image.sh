@@ -67,13 +67,13 @@ qemu-img create -f raw "$IMG" "$IMG_SIZE"
 log "Partitioning GPT (bios_grub + ESP ${ESP_SIZE_MIB} MiB + ext4 root)"
 parted -s "$IMG" mklabel gpt
 # 1. BIOS boot partition for GPT (required for grub-install --target=i386-pc on GPT)
-parted -s "$IMG" mkpart "bios" 1MiB 3MiB
+parted -s "$IMG" mkpart bios 1MiB 3MiB
 parted -s "$IMG" set 1 bios_grub on
 # 2. EFI System Partition
-parted -s "$IMG" mkpart "DarlingOS ESP" fat32 3MiB "$((ESP_SIZE_MIB + 3))MiB"
+parted -s "$IMG" mkpart ESP fat32 3MiB "$((ESP_SIZE_MIB + 3))MiB"
 parted -s "$IMG" set 2 esp on
 # 3. Root partition
-parted -s "$IMG" mkpart "DarlingOS root" ext4 "$((ESP_SIZE_MIB + 3))MiB" 100%
+parted -s "$IMG" mkpart root ext4 "$((ESP_SIZE_MIB + 3))MiB" 100%
 
 log "Attaching loop device"
 LOOP="$(losetup -P --show "$IMG")"
