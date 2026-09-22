@@ -107,7 +107,7 @@ r /bin/sh -c '
     linux-image-generic \
     grub-efi-amd64 grub-pc-bin \
     ca-certificates \
-    curl nano kbd \
+    curl nano kbd git \
     openssh-server \
     libfuse2t64 xdg-user-dirs
   dpkg --add-architecture i386
@@ -144,7 +144,26 @@ r /bin/sh -c '
   test -f /usr/lib/binfmt.d/darling.conf
 '
 
-# --- 5. configuration & zero-escape lockdown ---------------------------------
+# --- 5. homebrew -------------------------------------------------------------
+log "Bundling Homebrew into DarlingOS"
+mkdir -p "$CHROOT_DIR/usr/libexec/darling/usr/local/Homebrew" \
+         "$CHROOT_DIR/usr/libexec/darling/usr/local/bin" \
+         "$CHROOT_DIR/usr/libexec/darling/usr/local/Cellar" \
+         "$CHROOT_DIR/usr/libexec/darling/usr/local/Caskroom" \
+         "$CHROOT_DIR/usr/libexec/darling/usr/local/var/homebrew" \
+         "$CHROOT_DIR/usr/libexec/darling/usr/local/etc" \
+         "$CHROOT_DIR/usr/libexec/darling/usr/local/share"
+
+git clone --depth=1 https://github.com/Homebrew/brew.git \
+  "$CHROOT_DIR/usr/libexec/darling/usr/local/Homebrew"
+
+ln -sf /usr/local/Homebrew/bin/brew "$CHROOT_DIR/usr/libexec/darling/usr/local/bin/brew"
+
+# Ensure user darwin (UID 1000) owns /usr/local for rootless package management
+chown -R 1000:1000 "$CHROOT_DIR/usr/libexec/darling/usr/local"
+test -x "$CHROOT_DIR/usr/libexec/darling/usr/local/bin/brew"
+
+# --- 6. configuration & zero-escape lockdown ---------------------------------
 log "Configuring DarlingOS and applying zero-escape lockdown"
 
 printf 'darlingos\n' > "$CHROOT_DIR/etc/hostname"
@@ -293,12 +312,18 @@ r /bin/sh -c '
 # Provision default zsh configuration for user darwin.
 cat > "$CHROOT_DIR/home/darwin/.zprofile" <<'EOF'
 # DarlingOS .zprofile
-export PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+export PATH="/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+export HOMEBREW_NO_ANALYTICS=1
+export HOMEBREW_NO_AUTO_UPDATE=1
+eval "$(/usr/local/bin/brew shellenv 2>/dev/null || true)"
 EOF
 
 cat > "$CHROOT_DIR/home/darwin/.zshrc" <<'EOF'
 # DarlingOS .zshrc
 export PROMPT='%m:%~ %n%# '
+export PATH="/usr/local/bin:/usr/local/sbin:$PATH"
+export HOMEBREW_NO_ANALYTICS=1
+export HOMEBREW_NO_AUTO_UPDATE=1
 EOF
 chown -R 1000:1000 "$CHROOT_DIR/home/darwin"
 

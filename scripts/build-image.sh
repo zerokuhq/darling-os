@@ -153,6 +153,7 @@ Base:        Ubuntu 24.04 LTS (noble minbase)
 Kernel:      ${KERNEL:-unknown}
 Darling:     ${DARLING_TAG}
 Default Shell: /bin/zsh (login shell)
+Package Mgr:   Homebrew (/usr/local/bin/brew)
 Bootloader:  GRUB (BIOS i386-pc + UEFI x86_64), GPT Dual Boot
 
 Architecture & Security
