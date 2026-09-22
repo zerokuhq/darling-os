@@ -136,13 +136,13 @@ LOOP=""
 
 QCOW2="$DIST_DIR/$IMAGE_NAME.qcow2"
 log "Converting to qcow2"
-qemu-img convert -f raw -O qcow2 "$IMG" "$QCOV2"
+qemu-img convert -f raw -O qcow2 "$IMG" "$QCOW2"
 rm -f "$IMG"
 
 ( cd "$DIST_DIR" && sha256sum "$IMAGE_NAME.qcow2" > "$IMAGE_NAME.qcow2.sha256" )
 
 log "Compressing to zstandard (.qcow2.zst)"
-zstd -19 -T0 -q -f -o "$QCOV2.zst" "$QCOV2"
+zstd -19 -T0 -q -f -o "$QCOW2.zst" "$QCOW2"
 ( cd "$DIST_DIR" && sha256sum "$IMAGE_NAME.qcow2.zst" > "$IMAGE_NAME.qcow2.zst.sha256" )
 
 cat > "$DIST_DIR/IMAGE-INFO.txt" <<EOF
