@@ -84,6 +84,13 @@ mount --bind /dev/pts "$CHROOT_DIR/dev/pts"
 mount -t proc proc    "$CHROOT_DIR/proc"
 mount -t sysfs sys    "$CHROOT_DIR/sys"
 
+# Configure APT sources (including universe and security)
+cat > "$CHROOT_DIR/etc/apt/sources.list" <<EOF
+deb $MIRROR $SUITE main restricted universe multiverse
+deb $MIRROR $SUITE-updates main restricted universe multiverse
+deb http://security.ubuntu.com/ubuntu $SUITE-security main restricted universe multiverse
+EOF
+
 r() { chroot "$CHROOT_DIR" "$@"; }
 
 # --- 3. system packages -------------------------------------------------------
@@ -95,7 +102,7 @@ r /bin/sh -c '
   apt-get -y upgrade
   apt-get install -y --no-install-recommends \
     systemd systemd-sysv \
-    systemd-networkd systemd-resolved systemd-timesyncd \
+    systemd-resolved systemd-timesyncd \
     initramfs-tools \
     linux-image-generic \
     grub-pc grub-efi-amd64 \
