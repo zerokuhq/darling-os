@@ -153,15 +153,23 @@ else
 fi
 
 # --- 4. system runtime & userland ---------------------------------------------
-log "Downloading system packages $DARLING_TAG"
 mkdir -p "$WORK_DIR" "$DEBS_DIR"
-if [ ! -f "$WORK_DIR/packages.zip" ]; then
-  curl -fL --retry 3 -o "$WORK_DIR/packages.zip" "$DARLING_DEBS_URL"
+if [ "${BUILD_DARLING_FROM_SOURCE:-0}" = "1" ]; then
+  log "Compiling Darling from source (BUILD_DARLING_FROM_SOURCE=1)"
+  OUTPUT_DEBS_DIR="$DEBS_DIR" "$SCRIPT_DIR/build-darling-source.sh"
+elif [ -n "$(find "$DEBS_DIR" -name "*.deb" 2>/dev/null | head -n 1)" ]; then
+  log "Using locally provided Darling packages in $DEBS_DIR"
+else
+  log "Downloading system packages $DARLING_TAG"
+  if [ ! -f "$WORK_DIR/packages.zip" ]; then
+    curl -fL --retry 3 -o "$WORK_DIR/packages.zip" "$DARLING_DEBS_URL"
+  fi
+  echo "$DARLING_DEBS_SHA256  $WORK_DIR/packages.zip" | sha256sum -c -
+  unzip -q -o "$WORK_DIR/packages.zip" -d "$DEBS_DIR"
 fi
-echo "$DARLING_DEBS_SHA256  $WORK_DIR/packages.zip" | sha256sum -c -
-unzip -q -o "$WORK_DIR/packages.zip" -d "$DEBS_DIR"
-DEBS_SUBDIR="$(find "$DEBS_DIR" -maxdepth 1 -mindepth 1 -type d | head -n 1)"
-[ -n "$DEBS_SUBDIR" ] || { echo "error: no packages directory inside zip" >&2; exit 1; }
+
+DEBS_SUBDIR="$(find "$DEBS_DIR" -type f -name "*.deb" -exec dirname {} \; | sort -u | head -n 1)"
+[ -n "$DEBS_SUBDIR" ] || { echo "error: no packages found inside $DEBS_DIR" >&2; exit 1; }
 mount --bind "$DEBS_SUBDIR" "$CHROOT_DIR/var/cache/packages"
 
 log "Installing Darwin userland package set"

@@ -18,6 +18,11 @@ on:
         required: false
         default: '8G'
         type: string
+      build_from_source:
+        description: 'Compile Darling directly from source instead of prebuilt packages'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -54,6 +59,7 @@ jobs:
             "TARGET_ARCH=arm64" \
             "DARLING_TAG=${{ inputs.darling_tag || 'v0.1.20260608' }}" \
             "IMG_SIZE=${{ inputs.img_size || '8G' }}" \
+            "BUILD_DARLING_FROM_SOURCE=${{ inputs.build_from_source && '1' || '0' }}" \
             ./scripts/build-image.sh
           sudo chmod -R a+rX build/dist
 
