@@ -24,8 +24,8 @@ permissions:
 
 jobs:
   build:
-    name: Build & Release DarlingOS Image
-    runs-on: ubuntu-24.04
+    name: Build & Release DarlingOS Image (ARM64)
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -36,7 +36,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             debootstrap \
             qemu-utils \
-            qemu-system-x86 \
+            qemu-system-arm \
+            qemu-efi-aarch64 \
             parted \
             dosfstools \
             e2fsprogs \
@@ -45,12 +46,12 @@ jobs:
             unzip \
             kpartx \
             ca-certificates \
-            grub-pc-bin \
-            grub-efi-amd64-bin
+            grub-efi-arm64-bin
 
       - name: Build DarlingOS disk image
         run: |
           sudo env "PATH=$PATH" \
+            "TARGET_ARCH=arm64" \
             "DARLING_TAG=${{ inputs.darling_tag || 'v0.1.20260608' }}" \
             "IMG_SIZE=${{ inputs.img_size || '8G' }}" \
             ./scripts/build-image.sh
@@ -58,10 +59,11 @@ jobs:
 
       - name: Headless QEMU boot smoke test
         run: |
-          echo "Starting QEMU headless boot smoke test..."
-          timeout --preserve-status 40s qemu-system-x86_64 \
-            -m 2G -smp 2 \
-            -drive file=build/dist/darlingos-amd64.qcow2,format=qcow2,if=virtio \
+          echo "Starting QEMU ARM64 headless boot smoke test..."
+          timeout --preserve-status 40s qemu-system-aarch64 \
+            -M virt -cpu cortex-a57 -m 2G -smp 2 \
+            -bios /usr/share/qemu-efi-aarch64/QEMU_EFI.fd \
+            -drive file=build/dist/darlingos-arm64.qcow2,format=qcow2,if=virtio \
             -nographic -serial file:boot.log || true
           
           echo "=== Console Boot Output ==="
@@ -74,11 +76,11 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: darlingos-amd64
+          name: darlingos-arm64
           path: |
-            build/dist/darlingos-amd64.qcow2.zst
-            build/dist/darlingos-amd64.qcow2.zst.sha256
-            build/dist/darlingos-amd64.qcow2.sha256
+            build/dist/darlingos-arm64.qcow2.zst
+            build/dist/darlingos-arm64.qcow2.zst.sha256
+            build/dist/darlingos-arm64.qcow2.sha256
             build/dist/IMAGE-INFO.txt
           retention-days: 14
 
@@ -86,13 +88,13 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
-          name: "DarlingOS ${{ github.ref_name }}"
+          name: "DarlingOS ${{ github.ref_name }} (ARM64)"
           body_path: build/dist/IMAGE-INFO.txt
           draft: false
           prerelease: false
           files: |
-            build/dist/darlingos-amd64.qcow2.zst
-            build/dist/darlingos-amd64.qcow2.zst.sha256
+            build/dist/darlingos-arm64.qcow2.zst
+            build/dist/darlingos-arm64.qcow2.zst.sha256
             build/dist/IMAGE-INFO.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -24,7 +24,14 @@ TARGET_DIR="${1:?usage: build-rootfs.sh <target-dir>}"
 
 # --- pinned inputs ---------------------------------------------------------
 SUITE="${SUITE:-noble}"
-MIRROR="${MIRROR:-http://archive.ubuntu.com/ubuntu}"
+TARGET_ARCH="${TARGET_ARCH:-arm64}"
+
+if [ "$TARGET_ARCH" = "arm64" ]; then
+  DEFAULT_MIRROR="http://ports.ubuntu.com/ubuntu-ports"
+else
+  DEFAULT_MIRROR="http://archive.ubuntu.com/ubuntu"
+fi
+MIRROR="${MIRROR:-$DEFAULT_MIRROR}"
 
 # Prebuilt binary package release.
 DARLING_TAG="${DARLING_TAG:-v0.1.20260608}"
@@ -66,9 +73,9 @@ cleanup() {
 trap cleanup EXIT
 
 # --- 1. base system ---------------------------------------------------------
-log "Creating $SUITE base in $TARGET_DIR"
+log "Creating $SUITE base in $TARGET_DIR (arch: $TARGET_ARCH)"
 mkdir -p "$TARGET_DIR"
-debootstrap --variant=minbase --arch=amd64 "$SUITE" "$TARGET_DIR" "$MIRROR"
+debootstrap --variant=minbase --arch="$TARGET_ARCH" "$SUITE" "$TARGET_DIR" "$MIRROR"
 
 # --- 2. chroot plumbing ------------------------------------------------------
 log "Preparing chroot"
@@ -81,18 +88,35 @@ mount --bind /dev/pts "$CHROOT_DIR/dev/pts"
 mount -t proc proc    "$CHROOT_DIR/proc"
 mount -t sysfs sys    "$CHROOT_DIR/sys"
 
-# Configure APT sources (including universe and security)
-cat > "$CHROOT_DIR/etc/apt/sources.list" <<EOF
+# Configure APT sources
+if [ "$TARGET_ARCH" = "arm64" ]; then
+  cat > "$CHROOT_DIR/etc/apt/sources.list" <<EOF
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $SUITE main restricted universe multiverse
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $SUITE-updates main restricted universe multiverse
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $SUITE-security main restricted universe multiverse
+deb [arch=amd64] http://archive.ubuntu.com/ubuntu $SUITE main restricted universe multiverse
+deb [arch=amd64] http://archive.ubuntu.com/ubuntu $SUITE-updates main restricted universe multiverse
+deb [arch=amd64] http://security.ubuntu.com/ubuntu $SUITE-security main restricted universe multiverse
+EOF
+else
+  cat > "$CHROOT_DIR/etc/apt/sources.list" <<EOF
 deb $MIRROR $SUITE main restricted universe multiverse
 deb $MIRROR $SUITE-updates main restricted universe multiverse
 deb http://security.ubuntu.com/ubuntu $SUITE-security main restricted universe multiverse
 EOF
+fi
 
 r() { chroot "$CHROOT_DIR" "$@"; }
 
 # --- 3. system packages -------------------------------------------------------
 log "Installing system packages (kernel, bootloader, networking, runtime dependencies)"
-r /bin/sh -c '
+if [ "$TARGET_ARCH" = "arm64" ]; then
+  BOOTLOADER_PKG="grub-efi-arm64 grub-efi-arm64-bin"
+else
+  BOOTLOADER_PKG="grub-efi-amd64 grub-pc-bin"
+fi
+
+r /bin/sh -c "
   set -e
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
@@ -102,15 +126,31 @@ r /bin/sh -c '
     systemd-resolved systemd-timesyncd \
     initramfs-tools \
     linux-image-generic \
-    grub-efi-amd64 grub-pc-bin \
+    $BOOTLOADER_PKG \
     ca-certificates \
     curl nano kbd git \
     openssh-server \
     libfuse2t64 xdg-user-dirs
-  dpkg --add-architecture i386
-  apt-get update
-  apt-get install -y --no-install-recommends libc6-i386
-'
+"
+
+if [ "$TARGET_ARCH" = "arm64" ]; then
+  r /bin/sh -c '
+    set -e
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get install -y --no-install-recommends qemu-user-static binfmt-support
+    dpkg --add-architecture amd64
+    apt-get update
+    apt-get install -y --no-install-recommends libc6:amd64
+  '
+else
+  r /bin/sh -c '
+    set -e
+    export DEBIAN_FRONTEND=noninteractive
+    dpkg --add-architecture i386
+    apt-get update
+    apt-get install -y --no-install-recommends libc6-i386
+  '
+fi
 
 # --- 4. system runtime & userland ---------------------------------------------
 log "Downloading system packages $DARLING_TAG"
@@ -129,7 +169,11 @@ deb_args=""
 for p in "${DARLING_DEBS[@]}"; do
   deb_args="$deb_args /var/cache/packages/${p}_*.deb"
 done
-r /bin/sh -c "set -e; export DEBIAN_FRONTEND=noninteractive; apt-get install -y$deb_args"
+if [ "$TARGET_ARCH" = "arm64" ]; then
+  r /bin/sh -c "set -e; export DEBIAN_FRONTEND=noninteractive; dpkg -i --force-architecture $deb_args || apt-get install -y -f"
+else
+  r /bin/sh -c "set -e; export DEBIAN_FRONTEND=noninteractive; apt-get install -y$deb_args"
+fi
 
 log "Verifying system runtime installation"
 r /bin/sh -c '

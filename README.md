@@ -30,43 +30,45 @@ Built on a minimal Linux kernel and systemd foundation, DarlingOS is strictly ha
   - The shell wrapper (`/usr/local/bin/system-shell`) traps all interrupt signals (`INT`, `QUIT`, `TSTP`, `HUP`) and runs in an infinite loop. Any session exit immediately restarts DarlingOS without yielding to a Linux shell.
   - Unified Darwin userland: the prefix is housed cleanly in `~/.system` (no `/darling` folder names) and `/Volumes/SystemRoot` is automatically unmounted to prevent host filesystem leakage.
   - Systemd emergency and rescue targets are masked so errors cannot drop into an emergency root shell.
-- **Dual Bootloader Support**: GPT partitioned disk image with both legacy BIOS (`i386-pc` via `bios_grub`) and UEFI (`x86_64-efi` with removable fallback binary `BOOTX64.EFI`).
+- **UEFI Bootloader**: GPT partitioned disk image formatted with FAT32 ESP and UEFI (`arm64-efi` with fallback binary `BOOTAA64.EFI`).
 - **Remote SSH Access**: SSH is enabled and restricted strictly to user `darwin` (`PermitRootLogin no`), dropping directly into the DarlingOS `zsh` shell.
-- **Automated CI/CD**: Prebuilt disk images are compiled, verified with headless QEMU boot tests, and published via GitHub Actions Artifacts and GitHub Releases.
+- **Automated CI/CD**: Prebuilt disk images are compiled on GitHub Actions ARM64 runners (`ubuntu-24.04-arm`), verified with headless QEMU boot tests, and published via GitHub Actions Artifacts and GitHub Releases.
 
 ---
 
 ## Quick Start: Running Prebuilt Images
 
 ### 1. Download
-Download the latest compressed disk image (`darlingos-amd64.qcow2.zst`) from [GitHub Releases](https://github.com/zerokuhq/darling-os/releases) or GitHub Actions Artifacts.
+Download the latest compressed disk image (`darlingos-arm64.qcow2.zst`) from [GitHub Releases](https://github.com/zerokuhq/darling-os/releases) or GitHub Actions Artifacts.
 
 Decompress the image:
 ```bash
-zstd -d darlingos-amd64.qcow2.zst
+zstd -d darlingos-arm64.qcow2.zst
 ```
 
 ### 2. Run with QEMU
 
-#### On Linux (KVM Accelerated)
+#### On ARM64 Linux (KVM Accelerated)
 ```bash
-qemu-system-x86_64 -enable-kvm -cpu host -m 4G -smp 4 \
-  -drive file=darlingos-amd64.qcow2,format=qcow2,if=virtio \
+qemu-system-aarch64 -M virt -cpu host -accel kvm -m 4G -smp 4 \
+  -bios /usr/share/qemu-efi-aarch64/QEMU_EFI.fd \
+  -drive file=darlingos-arm64.qcow2,format=qcow2,if=virtio \
   -device virtio-net-pci,netdev=net0 \
   -netdev user,id=net0,hostfwd=tcp::2222-:22 \
   -nographic -serial mon:stdio
 ```
 
-#### Without KVM (UTM or QEMU TCG Emulation)
+#### On Apple Silicon macOS (HVF Accelerated)
 ```bash
-qemu-system-x86_64 -m 4G -smp 4 \
-  -drive file=darlingos-amd64.qcow2,format=qcow2,if=virtio \
+qemu-system-aarch64 -M virt -accel hvf -cpu host -m 4G -smp 4 \
+  -bios /opt/homebrew/share/qemu/edk2-aarch64-code.fd \
+  -drive file=darlingos-arm64.qcow2,format=qcow2,if=virtio \
   -device virtio-net-pci,netdev=net0 \
   -netdev user,id=net0,hostfwd=tcp::2222-:22 \
   -nographic -serial mon:stdio
 ```
 
-> **Tip:** You can also import `darlingos-amd64.qcow2` directly into **UTM** or **Proxmox VE**.
+> **Tip:** You can also import `darlingos-arm64.qcow2` directly into **UTM** choosing **Virtualize (ARM64)**.
 
 ### 3. Remote Access via SSH
 If port forwarding is configured (e.g. `2222 -> 22`):
@@ -114,12 +116,14 @@ Homebrew is pre-configured with rootless permissions (`/usr/local` owned by user
 
 ## Building DarlingOS from Source
 
-### Prerequisites (Ubuntu 24.04 LTS host)
+### Prerequisites (Ubuntu 24.04 LTS ARM64 host)
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
   debootstrap \
   qemu-utils \
+  qemu-system-arm \
+  qemu-efi-aarch64 \
   parted \
   dosfstools \
   e2fsprogs \
@@ -128,8 +132,7 @@ sudo apt-get install -y \
   unzip \
   kpartx \
   ca-certificates \
-  grub-pc-bin \
-  grub-efi-amd64-bin
+  grub-efi-arm64-bin
 ```
 
 ### Assemble the Disk Image
@@ -138,8 +141,8 @@ sudo ./scripts/build-image.sh
 ```
 
 The output will be generated in `build/dist/`:
-- `darlingos-amd64.qcow2.zst`: Compressed bootable disk image.
-- `darlingos-amd64.qcow2.zst.sha256`: SHA-256 checksum.
+- `darlingos-arm64.qcow2.zst`: Compressed bootable ARM64 disk image.
+- `darlingos-arm64.qcow2.zst.sha256`: SHA-256 checksum.
 - `IMAGE-INFO.txt`: Image metadata and run instructions.
 
 ---

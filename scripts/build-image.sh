@@ -32,7 +32,8 @@ MNT="$BUILD_DIR/mnt"
 
 IMG_SIZE="${IMG_SIZE:-8G}"
 ESP_SIZE_MIB="${ESP_SIZE_MIB:-512}"
-IMAGE_NAME="darlingos-amd64"
+TARGET_ARCH="${TARGET_ARCH:-arm64}"
+IMAGE_NAME="darlingos-${TARGET_ARCH}"
 
 DARLING_TAG="${DARLING_TAG:-v0.1.20260608}"
 
@@ -64,16 +65,21 @@ mkdir -p "$BUILD_DIR" "$DIST_DIR"
 rm -f "$IMG"
 qemu-img create -f raw "$IMG" "$IMG_SIZE"
 
-log "Partitioning GPT (bios_grub + ESP ${ESP_SIZE_MIB} MiB + ext4 root)"
-parted -s "$IMG" mklabel gpt
-# 1. BIOS boot partition for GPT (required for grub-install --target=i386-pc on GPT)
-parted -s "$IMG" mkpart bios 1MiB 3MiB
-parted -s "$IMG" set 1 bios_grub on
-# 2. EFI System Partition
-parted -s "$IMG" mkpart ESP fat32 3MiB "$((ESP_SIZE_MIB + 3))MiB"
-parted -s "$IMG" set 2 esp on
-# 3. Root partition
-parted -s "$IMG" mkpart root ext4 "$((ESP_SIZE_MIB + 3))MiB" 100%
+if [ "$TARGET_ARCH" = "arm64" ]; then
+  log "Partitioning GPT (ESP ${ESP_SIZE_MIB} MiB + ext4 root)"
+  parted -s "$IMG" mklabel gpt
+  parted -s "$IMG" mkpart ESP fat32 1MiB "$((ESP_SIZE_MIB + 1))MiB"
+  parted -s "$IMG" set 1 esp on
+  parted -s "$IMG" mkpart root ext4 "$((ESP_SIZE_MIB + 1))MiB" 100%
+else
+  log "Partitioning GPT (bios_grub + ESP ${ESP_SIZE_MIB} MiB + ext4 root)"
+  parted -s "$IMG" mklabel gpt
+  parted -s "$IMG" mkpart bios 1MiB 3MiB
+  parted -s "$IMG" set 1 bios_grub on
+  parted -s "$IMG" mkpart ESP fat32 3MiB "$((ESP_SIZE_MIB + 3))MiB"
+  parted -s "$IMG" set 2 esp on
+  parted -s "$IMG" mkpart root ext4 "$((ESP_SIZE_MIB + 3))MiB" 100%
+fi
 
 log "Attaching loop device"
 modprobe loop 2>/dev/null || true
@@ -84,26 +90,35 @@ LOOP="$(losetup -fP --show "$IMG")"
 log "Loop device: $LOOP"
 partprobe "$LOOP" 2>/dev/null || true
 udevadm settle 2>/dev/null || sleep 2
-if [ ! -e "${LOOP}p2" ]; then
+
+if [ "$TARGET_ARCH" = "arm64" ]; then
+  ESP_PART="${LOOP}p1"
+  ROOT_PART="${LOOP}p2"
+else
+  ESP_PART="${LOOP}p2"
+  ROOT_PART="${LOOP}p3"
+fi
+
+if [ ! -e "$ROOT_PART" ]; then
   partx -u "$LOOP" 2>/dev/null || partx -a "$LOOP" 2>/dev/null || true
 fi
 
 log "Formatting partitions"
-mkfs.fat -F 32 -n DARLING_ESP "${LOOP}p2"
-mkfs.ext4 -F -L DARLINGOS "${LOOP}p3"
+mkfs.fat -F 32 -n DARLING_ESP "$ESP_PART"
+mkfs.ext4 -F -L DARLINGOS "$ROOT_PART"
 
 log "Mounting filesystems"
 mkdir -p "$MNT"
-mount "${LOOP}p3" "$MNT"
+mount "$ROOT_PART" "$MNT"
 mkdir -p "$MNT/boot/efi"
-mount "${LOOP}p2" "$MNT/boot/efi"
+mount "$ESP_PART" "$MNT/boot/efi"
 
 log "Building DarlingOS rootfs"
-"$SCRIPT_DIR/build-rootfs.sh" "$MNT"
+TARGET_ARCH="$TARGET_ARCH" "$SCRIPT_DIR/build-rootfs.sh" "$MNT"
 
 log "Writing /etc/fstab"
-ROOT_UUID="$(blkid -s UUID -o value "${LOOP}p3")"
-ESP_UUID="$(blkid -s UUID -o value "${LOOP}p2")"
+ROOT_UUID="$(blkid -s UUID -o value "$ROOT_PART")"
+ESP_UUID="$(blkid -s UUID -o value "$ESP_PART")"
 cat > "$MNT/etc/fstab" <<EOF
 # <file system> <mount point> <type>  <options>          <dump> <pass>
 UUID=$ROOT_UUID  /            ext4    errors=remount-ro  0 1
@@ -116,10 +131,16 @@ mount --bind /dev/pts "$MNT/dev/pts"
 mount -t proc proc    "$MNT/proc"
 mount -t sysfs sys    "$MNT/sys"
 
-log "Installing GRUB (BIOS + UEFI)"
-chroot "$MNT" /usr/sbin/grub-install --target=i386-pc --recheck "$LOOP"
-chroot "$MNT" /usr/sbin/grub-install --target=x86_64-efi --efi-directory=/boot/efi \
-  --bootloader-id=DarlingOS --removable --no-nvram --recheck
+if [ "$TARGET_ARCH" = "arm64" ]; then
+  log "Installing GRUB (UEFI ARM64)"
+  chroot "$MNT" /usr/sbin/grub-install --target=arm64-efi --efi-directory=/boot/efi \
+    --bootloader-id=DarlingOS --removable --no-nvram --recheck
+else
+  log "Installing GRUB (BIOS + UEFI)"
+  chroot "$MNT" /usr/sbin/grub-install --target=i386-pc --recheck "$LOOP"
+  chroot "$MNT" /usr/sbin/grub-install --target=x86_64-efi --efi-directory=/boot/efi \
+    --bootloader-id=DarlingOS --removable --no-nvram --recheck
+fi
 chroot "$MNT" /usr/sbin/grub-mkconfig -o /boot/grub/grub.cfg
 
 log "Unmounting chroot bind mounts"
@@ -153,8 +174,9 @@ Base:        Ubuntu 24.04 LTS (noble minbase)
 Kernel:      ${KERNEL:-unknown}
 Darling:     ${DARLING_TAG}
 Default Shell: /bin/zsh (login shell)
-Package Mgr:   Homebrew (/usr/local/bin/brew)
-Bootloader:  GRUB (BIOS i386-pc + UEFI x86_64), GPT Dual Boot
+Package Mgr:   Homebrew (/usr/local/bin/brew, /opt/homebrew/bin/brew)
+Bootloader:  GRUB (UEFI arm64-efi / BOOTAA64.EFI), GPT Boot
+Architecture: ${TARGET_ARCH}
 
 Architecture & Security
 -----------------------
@@ -164,14 +186,18 @@ Architecture & Security
 - SSH: enabled for user 'darwin' (connects directly into DarlingOS zsh).
 
 Running with QEMU:
-  # Linux (KVM enabled)
-  qemu-system-x86_64 -enable-kvm -cpu host -m 4G -smp 4 \\
+  # ARM64 Host (KVM enabled on Linux / HVF on macOS)
+  qemu-system-aarch64 -M virt -cpu host -accel kvm -m 4G -smp 4 \\
+    -bios /usr/share/qemu-efi-aarch64/QEMU_EFI.fd \\
     -drive file=${IMAGE_NAME}.qcow2,format=qcow2,if=virtio \\
+    -device virtio-net-pci,netdev=net0 -netdev user,id=net0,hostfwd=tcp::2222-:22 \\
     -nographic -serial mon:stdio
 
-  # Without KVM (UTM or QEMU TCG)
-  qemu-system-x86_64 -m 4G -smp 4 \\
+  # Emulated CPU (cortex-a57)
+  qemu-system-aarch64 -M virt -cpu cortex-a57 -m 4G -smp 4 \\
+    -bios /usr/share/qemu-efi-aarch64/QEMU_EFI.fd \\
     -drive file=${IMAGE_NAME}.qcow2,format=qcow2,if=virtio \\
+    -device virtio-net-pci,netdev=net0 -netdev user,id=net0,hostfwd=tcp::2222-:22 \\
     -nographic -serial mon:stdio
 EOF
 
