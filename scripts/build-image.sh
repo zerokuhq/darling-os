@@ -201,5 +201,9 @@ Running with QEMU:
     -nographic -serial mon:stdio
 EOF
 
+if [ -n "${SUDO_UID:-}" ] && [ -n "${SUDO_GID:-}" ]; then
+  chown -R "$SUDO_UID:$SUDO_GID" "$BUILD_DIR" 2>/dev/null || true
+fi
+
 log "Done - output in $DIST_DIR"
 ls -lh "$DIST_DIR"
