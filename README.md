@@ -79,6 +79,46 @@ Connecting via SSH drops directly into DarlingOS `zsh`.
 
 ---
 
+## Deploy to Hetzner Cloud (ARM64 CAX Series)
+
+DarlingOS is pre-configured with Hetzner Cloud metadata provisioning, `ttyAMA0` serial console support, and automatic disk expansion.
+
+### Step 1: Create a Hetzner Cloud Server
+Create an ARM64 server (e.g., **CAX11**, **CAX21**, **CAX31**, or **CAX41**) with your SSH key attached.
+
+### Step 2: Boot into Rescue System
+In the Hetzner Cloud Console:
+1. Navigate to your server > **Rescue**.
+2. Select **Linux 64-bit** and click **Enable Rescue & Power Cycle**.
+3. SSH into the rescue environment:
+   ```bash
+   ssh root@<YOUR_SERVER_IP>
+   ```
+
+### Step 3: Flash DarlingOS onto the Disk
+Run the following one-liner to stream and write the image directly to disk:
+```bash
+curl -fL "https://github.com/zerokuhq/darling-os/releases/latest/download/darlingos-arm64.qcow2.zst" \
+  | zstd -d \
+  | qemu-img convert -f qcow2 -O raw - /dev/sda
+```
+
+### Step 4: Reboot
+```bash
+reboot
+```
+
+### Step 5: Connect to DarlingOS
+Once the server reboots:
+- **SSH:** The Hetzner metadata service automatically provisions your Hetzner SSH keys to `/home/darwin/.ssh/authorized_keys`:
+  ```bash
+  ssh darwin@<YOUR_SERVER_IP>
+  ```
+- **Web Console:** Open the **Console** or **Serial Console** in the Hetzner Cloud Console; it automatically logs directly into your DarlingOS `zsh` session via `tty1` / `ttyAMA0`.
+- **Disk Expansion:** The root ext4 partition automatically expands to fill the entire capacity of your Hetzner Cloud plan (40 GB, 80 GB, etc.).
+
+---
+
 ## Darwin CLI Commands Inside DarlingOS
 
 Inside DarlingOS, you have access to standard Darwin commands and utilities:

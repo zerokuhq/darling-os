@@ -130,6 +130,7 @@ r /bin/sh -c "
     ca-certificates \
     curl nano kbd git \
     openssh-server \
+    cloud-guest-utils \
     libfuse2t64 xdg-user-dirs
 "
 
@@ -332,8 +333,18 @@ Restart=always
 RestartSec=1
 EOF
 
-cat > "$CHROOT_DIR/etc/issue" <<'EOF'
-DarlingOS (amd64)
+# ttyAMA0 serial autologin directly into DarlingOS session (ARM64 PL011 / Hetzner).
+mkdir -p "$CHROOT_DIR/etc/systemd/system/getty@ttyAMA0.service.d"
+cat > "$CHROOT_DIR/etc/systemd/system/getty@ttyAMA0.service.d/override.conf" <<'EOF'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin darwin --noclear --keep-baud 115200,38400,9600 ttyAMA0 vt100
+Restart=always
+RestartSec=1
+EOF
+
+cat > "$CHROOT_DIR/etc/issue" <<EOF
+DarlingOS ($TARGET_ARCH)
 EOF
 
 # Single-userland session wrapper: trapped infinite loop running zsh in DarlingOS.
@@ -360,6 +371,73 @@ done
 EOF
 chmod 0755 "$CHROOT_DIR/usr/local/bin/system-shell"
 
+# Cloud instance provisioning: dynamic SSH key injection and root partition auto-expansion
+cat > "$CHROOT_DIR/usr/local/bin/cloud-provision" <<'EOF'
+#!/bin/sh
+set -eu
+
+# 1. Expand root partition and ext4 filesystem to use full disk size
+ROOT_DEV="$(findmnt -n -o SOURCE / 2>/dev/null || true)"
+if [ -n "$ROOT_DEV" ]; then
+  DISK="$(lsblk -no PKNAME "$ROOT_DEV" 2>/dev/null || true)"
+  PART_NUM="$(echo "$ROOT_DEV" | grep -o '[0-9]*$')"
+  if [ -n "$DISK" ] && [ -n "$PART_NUM" ]; then
+    growpart "/dev/$DISK" "$PART_NUM" 2>/dev/null || true
+    resize2fs "$ROOT_DEV" 2>/dev/null || true
+  fi
+fi
+
+# 2. Inject SSH public keys from Cloud Metadata (Hetzner Cloud & EC2/OpenStack compatible)
+SSH_DIR="/home/darwin/.ssh"
+mkdir -p "$SSH_DIR"
+chmod 0700 "$SSH_DIR"
+touch "$SSH_DIR/authorized_keys"
+chmod 0600 "$SSH_DIR/authorized_keys"
+
+# Hetzner Cloud metadata service
+HETZNER_KEYS="$(curl -fsSL --connect-timeout 2 --max-time 4 http://169.254.169.254/hetzner/v1/metadata/public-keys 2>/dev/null || true)"
+if [ -n "$HETZNER_KEYS" ]; then
+  echo "$HETZNER_KEYS" >> "$SSH_DIR/authorized_keys"
+fi
+
+# Fallback: OpenStack / EC2 compatible metadata service
+if [ -z "$HETZNER_KEYS" ]; then
+  EC2_KEYS="$(curl -fsSL --connect-timeout 2 --max-time 4 http://169.254.169.254/latest/meta-data/public-keys/0/openssh-key 2>/dev/null || true)"
+  if [ -n "$EC2_KEYS" ]; then
+    echo "$EC2_KEYS" >> "$SSH_DIR/authorized_keys"
+  fi
+fi
+
+if [ -f "$SSH_DIR/authorized_keys" ]; then
+  sort -u "$SSH_DIR/authorized_keys" -o "$SSH_DIR/authorized_keys" 2>/dev/null || true
+  chown -R 1000:1000 "$SSH_DIR"
+fi
+
+# Hostname sync from Hetzner metadata
+HETZNER_HOST="$(curl -fsSL --connect-timeout 2 --max-time 3 http://169.254.169.254/hetzner/v1/metadata/hostname 2>/dev/null || true)"
+if [ -n "$HETZNER_HOST" ]; then
+  hostnamectl set-hostname "$HETZNER_HOST" 2>/dev/null || true
+fi
+EOF
+chmod 0755 "$CHROOT_DIR/usr/local/bin/cloud-provision"
+
+# Cloud provisioning service: runs after network is ready, before SSH daemon
+cat > "$CHROOT_DIR/etc/systemd/system/cloud-provision.service" <<'EOF'
+[Unit]
+Description=Cloud Instance Provisioning (Hetzner Metadata & Disk Expansion)
+After=network-online.target
+Wants=network-online.target
+Before=ssh.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cloud-provision
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # Users and permissions lockdown:
 # 1. Disable root account completely (locked password, nologin shell).
 # 2. Create user 'darwin' with locked password and system-shell wrapper.
@@ -383,7 +461,7 @@ r /bin/sh -c '
 
   # Enable services
   systemctl enable systemd-networkd.service systemd-resolved.service systemd-timesyncd.service ssh.service
-  systemctl enable getty@tty1.service getty@ttyS0.service disable-vt-switch.service
+  systemctl enable getty@tty1.service getty@ttyS0.service getty@ttyAMA0.service disable-vt-switch.service cloud-provision.service
   ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
   # Mask secondary gettys and dynamic VTs to block VT switching
@@ -423,7 +501,7 @@ AllowUsers darwin
 X11Forwarding no
 EOF
 
-# DHCP for ethernet interfaces.
+# DHCP & IPv6 SLAAC for ethernet interfaces (Hetzner / KVM / VirtIO).
 mkdir -p "$CHROOT_DIR/etc/systemd/network"
 cat > "$CHROOT_DIR/etc/systemd/network/10-dhcp.network" <<'EOF'
 [Match]
@@ -431,14 +509,22 @@ Name=en* eth*
 
 [Network]
 DHCP=yes
+IPv6AcceptRA=yes
+
+[DHCPv4]
+UseDNS=yes
+UseRoutes=yes
+
+[IPv6AcceptRA]
+UseDNS=yes
 EOF
 
-# GRUB defaults.
+# GRUB defaults with serial and graphical console support.
 cat > "$CHROOT_DIR/etc/default/grub" <<'EOF'
 GRUB_DEFAULT=0
 GRUB_TIMEOUT=1
 GRUB_DISTRIBUTOR="DarlingOS"
-GRUB_CMDLINE_LINUX_DEFAULT="console=tty0 console=ttyS0,115200 quiet splash"
+GRUB_CMDLINE_LINUX_DEFAULT="console=tty0 console=ttyS0,115200 console=ttyAMA0,115200 quiet splash"
 GRUB_CMDLINE_LINUX=""
 GRUB_DISABLE_OS_PROBER=true
 GRUB_DISABLE_RECOVERY=true

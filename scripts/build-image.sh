@@ -199,6 +199,15 @@ Running with QEMU:
     -drive file=${IMAGE_NAME}.qcow2,format=qcow2,if=virtio \\
     -device virtio-net-pci,netdev=net0 -netdev user,id=net0,hostfwd=tcp::2222-:22 \\
     -nographic -serial mon:stdio
+
+Deploying to Hetzner Cloud (ARM64 CAX11 / CAX21 / CAX31 / CAX41):
+  1. Boot server into Linux 64-bit Rescue System from Hetzner Cloud Console.
+  2. Stream image to the primary drive:
+     curl -fL <URL>/${IMAGE_NAME}.qcow2.zst | zstd -d | qemu-img convert -f qcow2 -O raw - /dev/sda
+  3. Reboot server:
+     reboot
+  4. SSH keys from your Hetzner Cloud Console are automatically injected into /home/darwin/.ssh/authorized_keys,
+     and the partition automatically expands to the full drive size on first boot.
 EOF
 
 if [ -n "${SUDO_UID:-}" ] && [ -n "${SUDO_GID:-}" ]; then
