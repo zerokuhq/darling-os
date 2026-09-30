@@ -174,7 +174,7 @@ Base:        Ubuntu 24.04 LTS (noble minbase)
 Kernel:      ${KERNEL:-unknown}
 Darling:     ${DARLING_TAG}
 Default Shell: /bin/zsh (login shell)
-Package Mgr:   Homebrew (/usr/local/bin/brew, /opt/homebrew/bin/brew)
+Package Mgr:   Homebrew (/usr/local/bin/brew), xcodes (/usr/local/bin/xcodes)
 Bootloader:  GRUB (UEFI arm64-efi / BOOTAA64.EFI), GPT Boot
 Architecture: ${TARGET_ARCH}
 

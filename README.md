@@ -91,6 +91,7 @@ plutil -p file.plist  # Property list tool
 otool -L /bin/zsh     # Inspect Mach-O dependencies
 codesign --display    # Verify code signatures
 brew --version        # Bundled Homebrew package manager
+xcodes --version      # Xcode version manager (preinstalled via brew)
 python2               # Python runtime
 ruby                  # Ruby runtime
 perl                  # Perl runtime
@@ -98,14 +99,15 @@ perl                  # Perl runtime
 
 ---
 
-## Bundled Homebrew Package Manager
+## Bundled Homebrew & Preinstalled Packages
 
-DarlingOS includes **Homebrew** pre-bundled in `/usr/local` for command-line package management:
+DarlingOS includes **Homebrew** pre-bundled in `/usr/local` with tap `xcodesorg/made` and **`xcodes`** preinstalled:
 
 ```zsh
 brew --version        # Check Homebrew version
-brew help             # Display Homebrew commands
-brew install <pkg>    # Install command-line formulas
+xcodes version        # Check Xcodes CLI version
+xcodes list           # List installable Xcode versions
+brew install <pkg>    # Install additional command-line formulas
 ```
 
 Homebrew is pre-configured with rootless permissions (`/usr/local` owned by user `darwin`) and optimized for DarlingOS with automated telemetry and auto-update delays disabled (`HOMEBREW_NO_ANALYTICS=1`, `HOMEBREW_NO_AUTO_UPDATE=1`).

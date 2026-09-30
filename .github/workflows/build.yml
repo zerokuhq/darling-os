@@ -51,7 +51,8 @@ jobs:
             unzip \
             kpartx \
             ca-certificates \
-            grub-efi-arm64-bin
+            grub-efi-arm64-bin \
+            ipxe-qemu
 
       - name: Build DarlingOS disk image
         run: |
@@ -69,7 +70,8 @@ jobs:
           timeout --preserve-status 40s qemu-system-aarch64 \
             -M virt -cpu cortex-a57 -m 2G -smp 2 \
             -bios /usr/share/qemu-efi-aarch64/QEMU_EFI.fd \
-            -drive file=build/dist/darlingos-arm64.qcow2,format=qcow2,if=virtio,snapshot=on \
+            -drive file=build/dist/darlingos-arm64.qcow2,format=qcow2,if=none,id=bootdrive,snapshot=on \
+            -device virtio-blk-pci,drive=bootdrive,romfile="" \
             -nographic -serial file:boot.log || true
           
           echo "=== Console Boot Output ==="

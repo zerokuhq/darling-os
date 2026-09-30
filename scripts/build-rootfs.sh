@@ -193,7 +193,7 @@ r /bin/sh -c '
   test -f /usr/lib/binfmt.d/darling.conf
 '
 
-# --- 5. homebrew -------------------------------------------------------------
+# --- 5. homebrew & preinstalled packages -------------------------------------
 log "Bundling Homebrew into DarlingOS"
 mkdir -p "$CHROOT_DIR/usr/libexec/darling/usr/local/Homebrew" \
          "$CHROOT_DIR/usr/libexec/darling/usr/local/bin" \
@@ -208,15 +208,44 @@ git clone --depth=1 https://github.com/Homebrew/brew.git \
 
 ln -sf ../Homebrew/bin/brew "$CHROOT_DIR/usr/libexec/darling/usr/local/bin/brew"
 
+# Compatibility symlink: support scripts expecting ARM64 /opt/homebrew prefix
+mkdir -p "$CHROOT_DIR/usr/libexec/darling/opt"
+ln -sf ../usr/local "$CHROOT_DIR/usr/libexec/darling/opt/homebrew"
+
+log "Preinstalling Homebrew tap xcodesorg/made"
+mkdir -p "$CHROOT_DIR/usr/libexec/darling/usr/local/Homebrew/Library/Taps/xcodesorg"
+git clone --depth=1 https://github.com/XcodesOrg/homebrew-made.git \
+  "$CHROOT_DIR/usr/libexec/darling/usr/local/Homebrew/Library/Taps/xcodesorg/homebrew-made"
+
+log "Preinstalling xcodesorg/made/xcodes"
+# Attempt installation via darling shell brew if runtime emulation is usable during build
+if r /bin/sh -c '
+  export HOME=/Users/darwin
+  export USER=darwin
+  export HOMEBREW_NO_ANALYTICS=1
+  export HOMEBREW_NO_AUTO_UPDATE=1
+  /usr/bin/darling shell /usr/local/bin/brew install xcodesorg/made/xcodes
+' 2>/dev/null; then
+  log "Successfully installed xcodes via darling shell brew"
+else
+  log "Installing xcodes bottle directly into Homebrew Cellar"
+  XCODES_VERSION="2.1.0"
+  XCODES_BOTTLE_URL="https://github.com/XcodesOrg/xcodes/releases/download/${XCODES_VERSION}/xcodes-${XCODES_VERSION}.mojave.bottle.tar.gz"
+  mkdir -p "$CHROOT_DIR/usr/libexec/darling/usr/local/Cellar"
+  if ! curl -fL --retry 3 "$XCODES_BOTTLE_URL" | tar -xz -C "$CHROOT_DIR/usr/libexec/darling/usr/local/Cellar"; then
+    XCODES_VERSION="2.0.3"
+    XCODES_BOTTLE_URL="https://github.com/XcodesOrg/xcodes/releases/download/${XCODES_VERSION}/xcodes-${XCODES_VERSION}.mojave.bottle.tar.gz"
+    curl -fL --retry 3 "$XCODES_BOTTLE_URL" | tar -xz -C "$CHROOT_DIR/usr/libexec/darling/usr/local/Cellar"
+  fi
+  ln -sf "../Cellar/xcodes/${XCODES_VERSION}/bin/xcodes" "$CHROOT_DIR/usr/libexec/darling/usr/local/bin/xcodes"
+fi
+
 # Ensure user darwin (UID 1000) owns /usr/local for rootless package management
 chown -R 1000:1000 "$CHROOT_DIR/usr/libexec/darling/usr/local"
 test -x "$CHROOT_DIR/usr/libexec/darling/usr/local/Homebrew/bin/brew"
 test -x "$CHROOT_DIR/usr/libexec/darling/usr/local/bin/brew"
-
-# Compatibility symlink: support scripts expecting ARM64 /opt/homebrew prefix
-mkdir -p "$CHROOT_DIR/usr/libexec/darling/opt"
-ln -sf ../usr/local "$CHROOT_DIR/usr/libexec/darling/opt/homebrew"
 test -x "$CHROOT_DIR/usr/libexec/darling/opt/homebrew/bin/brew"
+test -x "$CHROOT_DIR/usr/libexec/darling/usr/local/bin/xcodes"
 
 # --- 6. configuration & single-userland zero-escape lockdown -----------------
 log "Configuring DarlingOS single userland and zero-escape lockdown"
